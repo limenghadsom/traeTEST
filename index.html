@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Sudoku</title>
+<style>
+  :root {
+    --bg: #f6f4ef;
+    --ink: #2b2721;
+    --muted: #8b847a;
+    --line: #ded8cd;
+    --heavy: #332e28;
+    --accent: #2f6bff;
+    --accent-soft: #e7efff;
+    --peer: #f3f5f9;
+    --same: #dde8ff;
+    --error: #c94444;
+    --error-soft: #fdeeee;
+    --hint: #1a8f6b;
+    --hint-soft: #e8f7f1;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { min-height: 100%; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 600px at 15% -10%, #ffffff 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #eef2f8 0%, transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button { font: inherit; color: inherit; }
+
+  .app {
+    max-width: 540px;
+    margin: 0 auto;
+    padding: 28px 16px 48px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(26px, 6vw, 34px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .sub {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    letter-spacing: 0.01em;
+  }
+
+  .stats { display: flex; gap: 10px; }
+
+  .stat {
+    display: grid;
+    gap: 2px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    min-width: 72px;
+    text-align: right;
+    backdrop-filter: blur(4px);
+  }
+
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+  }
+
+  .stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .board-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 540px;
+    margin: 0 auto;
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    aspect-ratio: 1 / 1;
+    background: #fff;
+    border: 3px solid var(--heavy);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 18px 40px -18px rgba(40, 33, 24, 0.35);
+    user-select: none;
+  }
+
+  .cell {
+    display: grid;
+    place-items: center;
+    position: relative;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    font-size: clamp(20px, 5.4vw, 30px);
+    font-weight: 500;
+    color: var(--accent);
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+  }
+
+  .cell:nth-child(3n) { border-right: 2px solid var(--heavy); }
+  .cell:nth-child(9n) { border-right: none; }
+  .cell:nth-child(n + 19):nth-child(-n + 27),
+  .cell:nth-child(n + 46):nth-child(-n + 54) { border-bottom: 2px solid var(--heavy); }
+  .cell:nth-child(n + 73) { border-bottom: none; }
+
+  .cell:focus { outline: none; }
+
+  .cell.peer { background: var(--peer); }
+  .cell.same { background: var(--same); }
+  .cell.hint { color: var(--hint); background: var(--hint-soft); }
+
+  .cell.error {
+    color: var(--error);
+    background: var(--error-soft);
+  }
+
+  .cell.selected {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
+  .cell.selected.error {
+    background: var(--error-soft);
+    box-shadow: inset 0 0 0 2px var(--error);
+  }
+
+  .cell.given {
+    color: var(--ink);
+    font-weight: 700;
+    cursor: default;
+  }
+
+  .notes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    height: 100%;
+    padding: 2px;
+  }
+
+  .notes i {
+    display: grid;
+    place-items: center;
+    font-style: normal;
+    font-size: clamp(8px, 1.9vw, 11px);
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: rgba(252, 250, 246, 0.84);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.22s ease, visibility 0.22s ease;
+  }
+
+  .overlay.show { opacity: 1; visibility: visible; }
+
+  .overlay-card { text-align: center; padding: 24px; }
+
+  .eyebrow {
+    margin: 0 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .overlay h2 {
+    margin: 0;
+    font-size: clamp(30px, 8vw, 40px);
+    letter-spacing: -0.02em;
+  }
+
+  .overlay-meta {
+    margin: 8px 0 18px;
+    color: var(--muted);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .side { display: grid; gap: 14px; }
+
+  .segmented {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 4px;
+    background: #ece8e0;
+    border-radius: 14px;
+  }
+
+  .segmented button {
+    border: 0;
+    background: transparent;
+    border-radius: 10px;
+    padding: 9px 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .segmented button:hover { color: var(--ink); }
+
+  .segmented button.active {
+    background: #fff;
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(40, 33, 24, 0.14);
+  }
+
+  .numpad {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 6px;
+  }
+
+  .key {
+    position: relative;
+    height: clamp(42px, 11vw, 52px);
+    display: grid;
+    place-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-size: clamp(17px, 4vw, 21px);
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.1s ease, background-color 0.15s ease;
+  }
+
+  .key:hover { border-color: #bdb4a7; transform: translateY(-1px); }
+  .key:active { transform: translateY(0); background: #faf8f4; }
+  .key.done { color: #c6bfb4; background: #faf8f4; }
+
+  .key-count {
+    position: absolute;
+    right: 5px;
+    bottom: 3px;
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .action {
+    height: 44px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .action:hover { border-color: #bdb4a7; }
+  .action:disabled { color: #c6bfb4; cursor: default; border-color: var(--line); background: #faf8f4; }
+
+  .action.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .primary {
+    height: 48px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--ink);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .primary:hover { background: #453e35; }
+  .primary:active { transform: translateY(1px); }
+
+  .tip {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  @media (min-width: 860px) {
+    .app {
+      max-width: 920px;
+      grid-template-columns: minmax(0, 540px) 320px;
+      gap: 20px 36px;
+      align-items: start;
+      padding-top: 40px;
+    }
+
+    .topbar { grid-column: 1 / -1; }
+    .side { gap: 16px; }
+    .numpad { grid-template-columns: repeat(3, 1fr); }
+    .numpad .key { height: 54px; }
+    .tip { text-align: left; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div>
+      <h1>Sudoku</h1>
+      <p class="sub">A clean, dependency-free Sudoku</p>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-label">Time</span>
+        <span class="stat-value" id="time">00:00</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Mistakes</span>
+        <span class="stat-value" id="mistakes">0</span>
+      </div>
+    </div>
+  </header>
+
+  <section class="board-panel" aria-label="Sudoku">
+    <div class="board-wrap">
+      <div class="board" id="board" role="grid" aria-label="Sudoku board"></div>
+      <div class="overlay" id="overlay" aria-hidden="true">
+        <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
+          <p class="eyebrow">Well played</p>
+          <h2 id="overlayTitle">Solved</h2>
+          <p class="overlay-meta"><span id="overlayTime">00:00</span> · <span id="overlayMistakes">0</span> mistakes</p>
+          <button class="primary" id="overlayNew" type="button">New game</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="segmented" id="difficulty" role="group" aria-label="Difficulty">
+      <button type="button" data-diff="easy" aria-pressed="true">Easy</button>
+      <button type="button" data-diff="medium" aria-pressed="false">Medium</button>
+      <button type="button" data-diff="hard" aria-pressed="false">Hard</button>
+    </div>
+
+    <div class="numpad" id="numpad" role="group" aria-label="Number pad"></div>
+
+    <div class="actions">
+      <button class="action" id="notesBtn" type="button" aria-pressed="false">Notes</button>
+      <button class="action" id="undoBtn" type="button">Undo</button>
+      <button class="action" id="eraseBtn" type="button">Erase</button>
+      <button class="action" id="hintBtn" type="button">Hint</button>
+    </div>
+
+    <button class="primary" id="newBtn" type="button">New game</button>
+    <p class="tip">Use 1–9 to fill a cell, arrow keys to move, N to toggle notes, Backspace to erase.</p>
+  </aside>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const DIFFICULTIES = {
+    easy: { clues: 40 },
+    medium: { clues: 32 },
+    hard: { clues: 28 },
+  };
+
+  const boardEl = document.getElementById('board');
+  const overlayEl = document.getElementById('overlay');
+  const overlayTimeEl = document.getElementById('overlayTime');
+  const overlayMistakesEl = document.getElementById('overlayMistakes');
+  const overlayNewEl = document.getElementById('overlayNew');
+  const timeEl = document.getElementById('time');
+  const mistakesEl = document.getElementById('mistakes');
+  const numpadEl = document.getElementById('numpad');
+  const diffEl = document.getElementById('difficulty');
+  const notesBtn = document.getElementById('notesBtn');
+  const undoBtn = document.getElementById('undoBtn');
+  const eraseBtn = document.getElementById('eraseBtn');
+  const hintBtn = document.getElementById('hintBtn');
+  const newBtn = document.getElementById('newBtn');
+
+  const state = {
+    difficulty: 'easy',
+    solution: [],
+    board: [],
+    given: [],
+    hint: [],
+    notes: [],
+    selected: -1,
+    notesMode: false,
+    mistakes: 0,
+    seconds: 0,
+    timerId: null,
+    solved: false,
+    history: [],
+  };
+
+  const cells = [];
+  const keyEls = [];
+  const keyCountEls = [];
+
+  // ---------- puzzle generation ----------
+
+  function shuffle(list) {
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  }
+
+  function candidates(grid, index) {
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    const used = new Set();
+    for (let k = 0; k < 9; k++) {
+      used.add(grid[row * 9 + k]);
+      used.add(grid[k * 9 + col]);
+    }
+    const boxRow = Math.floor(row / 3) * 3;
+    const boxCol = Math.floor(col / 3) * 3;
+    for (let r = boxRow; r < boxRow + 3; r++) {
+      for (let c = boxCol; c < boxCol + 3; c++) used.add(grid[r * 9 + c]);
+    }
+    const result = [];
+    for (let v = 1; v <= 9; v++) if (!used.has(v)) result.push(v);
+    return result;
+  }
+
+  // Randomized backtracking with a most-constrained-cell heuristic.
+  function fillGrid(grid) {
+    let best = -1;
+    let bestCandidates = null;
+    for (let i = 0; i < 81; i++) {
+      if (grid[i] !== 0) continue;
+      const list = candidates(grid, i);
+      if (list.length === 0) return false;
+      if (!bestCandidates || list.length < bestCandidates.length) {
+        best = i;
+        bestCandidates = list;
+        if (list.length === 1) break;
+      }
+    }
+    if (best === -1) return true;
+
+    shuffle(bestCandidates);
+    for (const value of bestCandidates) {
+      grid[best] = value;
+      if (fillGrid(grid)) return true;
+      grid[best] = 0;
+    }
+    return false;
+  }
+
+  // Counts solutions, stopping early at `limit`.
+  function countSolutions(grid, limit) {
+    const work = grid.slice();
+    let count = 0;
+
+    (function solve() {
+      let best = -1;
+      let bestCandidates = null;
+      for (let i = 0; i < 81; i++) {
+        if (work[i] !== 0) continue;
+        const list = candidates(work, i);
+        if (list.length === 0) return;
+        if (!bestCandidates || list.length < bestCandidates.length) {
+          best = i;
+          bestCandidates = list;
+          if (list.length === 1) break;
+        }
+      }
+      if (best === -1) {
+        count++;
+        return;
+      }
+      for (const value of bestCandidates) {
+        work[best] = value;
+        solve();
+        work[best] = 0;
+        if (count >= limit) return;
+      }
+    })();
+
+    return count;
+  }
+
+  // Digs holes while keeping the puzzle uniquely solvable.
+  function generate(difficulty) {
+    const solution = new Array(81).fill(0);
+    fillGrid(solution);
+
+    const puzzle = solution.slice();
+    const order = shuffle([...Array(81).keys()]);
+    const target = DIFFICULTIES[difficulty].clues;
+    let clues = 81;
+
+    for (const i of order) {
+      if (clues <= target) break;
+      const saved = puzzle[i];
+      puzzle[i] = 0;
+      if (countSolutions(puzzle, 2) === 1) clues--;
+      else puzzle[i] = saved;
+    }
+
+    return { puzzle, solution };
+  }
+
+  // ---------- helpers ----------
+
+  function peers(index) {
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    const result = new Set();
+    for (let k = 0; k < 9; k++) {
+      result.add(row * 9 + k);
+      result.add(k * 9 + col);
+    }
+    const boxRow = Math.floor(row / 3) * 3;
+    const boxCol = Math.floor(col / 3) * 3;
+    for (let r = boxRow; r < boxRow + 3; r++) {
+      for (let c = boxCol; c < boxCol + 3; c++) result.add(r * 9 + c);
+    }
+    result.delete(index);
+    return result;
+  }
+
+  function formatTime(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function snapshot() {
+    state.history.push({
+      board: state.board.slice(),
+      notes: state.notes.map((set) => new Set(set)),
+      hint: state.hint.slice(),
+      mistakes: state.mistakes,
+    });
+    if (state.history.length > 300) state.history.shift();
+  }
+
+  // ---------- rendering ----------
+
+  function cellLabel(index, value) {
+    const row = Math.floor(index / 9) + 1;
+    const col = (index % 9) + 1;
+    let label = `Row ${row} column ${col}`;
+    if (value) label += `, ${value}`;
+    else label += ', empty';
+    if (state.given[index]) label += ', given';
+    return label;
+  }
+
+  function render() {
+    const selected = state.selected;
+    const selRow = selected >= 0 ? Math.floor(selected / 9) : -1;
+    const selCol = selected >= 0 ? selected % 9 : -1;
+    const selBox = selected >= 0 ? Math.floor(selRow / 3) * 3 + Math.floor(selCol / 3) : -1;
+    const selValue = selected >= 0 ? state.board[selected] : 0;
+
+    for (let i = 0; i < 81; i++) {
+      const cell = cells[i];
+      const value = state.board[i];
+      const row = Math.floor(i / 9);
+      const col = i % 9;
+      const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+      const isPeer = selected >= 0 && i !== selected &&
+        (row === selRow || col === selCol || box === selBox);
+      const isSame = value !== 0 && value === selValue;
+
+      cell.classList.toggle('selected', i === selected);
+      cell.classList.toggle('peer', isPeer);
+      cell.classList.toggle('same', isSame);
+      cell.classList.toggle('given', state.given[i]);
+      cell.classList.toggle('hint', state.hint[i]);
+      cell.classList.toggle('error', value !== 0 && value !== state.solution[i]);
+
+      if (value !== 0) {
+        cell.textContent = String(value);
+      } else if (state.notes[i].size > 0) {
+        let html = '<span class="notes">';
+        for (let d = 1; d <= 9; d++) {
+          html += `<i>${state.notes[i].has(d) ? d : ''}</i>`;
+        }
+        cell.innerHTML = html + '</span>';
+      } else {
+        cell.textContent = '';
+      }
+
+      cell.tabIndex = i === selected ? 0 : -1;
+      cell.setAttribute('aria-label', cellLabel(i, value));
+    }
+
+    timeEl.textContent = formatTime(state.seconds);
+    mistakesEl.textContent = String(state.mistakes);
+    undoBtn.disabled = state.history.length === 0;
+    updateNumpad();
+  }
+
+  function updateNumpad() {
+    const counts = new Array(10).fill(0);
+    for (const value of state.board) if (value !== 0) counts[value]++;
+
+    for (let d = 1; d <= 9; d++) {
+      const remaining = 9 - counts[d];
+      keyCountEls[d].textContent = remaining > 0 ? String(remaining) : '';
+      keyEls[d].classList.toggle('done', remaining === 0);
+    }
+  }
+
+  function updateDifficultyButtons() {
+    for (const button of diffEl.querySelectorAll('button')) {
+      const active = button.dataset.diff === state.difficulty;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  // ---------- game flow ----------
+
+  function stopTimer() {
+    if (state.timerId !== null) {
+      clearInterval(state.timerId);
+      state.timerId = null;
+    }
+  }
+
+  function startTimer() {
+    stopTimer();
+    state.timerId = setInterval(() => {
+      state.seconds++;
+      timeEl.textContent = formatTime(state.seconds);
+    }, 1000);
+  }
+
+  function newGame(difficulty) {
+    state.difficulty = difficulty;
+    stopTimer();
+
+    const { puzzle, solution } = generate(difficulty);
+
+    state.solution = solution;
+    state.board = puzzle.slice();
+    state.given = puzzle.map((value) => value !== 0);
+    state.hint = new Array(81).fill(false);
+    state.notes = Array.from({ length: 81 }, () => new Set());
+    state.selected = puzzle.findIndex((value) => value === 0);
+    state.notesMode = false;
+    state.mistakes = 0;
+    state.seconds = 0;
+    state.solved = false;
+    state.history = [];
+
+    notesBtn.classList.remove('active');
+    notesBtn.setAttribute('aria-pressed', 'false');
+    overlayEl.classList.remove('show');
+    overlayEl.setAttribute('aria-hidden', 'true');
+
+    updateDifficultyButtons();
+    startTimer();
+    render();
+  }
+
+  function selectCell(index) {
+    if (state.solved) return;
+    state.selected = index;
+    render();
+  }
+
+  function placeValue(index, value) {
+    if (state.given[index] || state.solved) return;
+
+    snapshot();
+    state.board[index] = value;
+    state.notes[index].clear();
+
+    if (value !== state.solution[index]) {
+      state.mistakes++;
+    } else {
+      for (const peer of peers(index)) state.notes[peer].delete(value);
+    }
+
+    render();
+    checkWin();
+  }
+
+  function inputDigit(digit) {
+    const index = state.selected;
+    if (index < 0 || state.solved || state.given[index]) return;
+
+    if (state.notesMode) {
+      if (state.board[index] !== 0) return;
+      snapshot();
+      const set = state.notes[index];
+      if (set.has(digit)) set.delete(digit);
+      else set.add(digit);
+      render();
+      return;
+    }
+
+    placeValue(index, digit);
+  }
+
+  function eraseSelected() {
+    const index = state.selected;
+    if (index < 0 || state.solved || state.given[index]) return;
+    if (state.board[index] === 0 && state.notes[index].size === 0) return;
+
+    snapshot();
+    state.board[index] = 0;
+    state.notes[index].clear();
+    state.hint[index] = false;
+    render();
+  }
+
+  function undo() {
+    const previous = state.history.pop();
+    if (!previous) return;
+
+    state.board = previous.board;
+    state.notes = previous.notes;
+    state.hint = previous.hint;
+    state.mistakes = previous.mistakes;
+    state.solved = false;
+
+    overlayEl.classList.remove('show');
+    overlayEl.setAttribute('aria-hidden', 'true');
+    if (state.timerId === null) startTimer();
+    render();
+  }
+
+  function giveHint() {
+    if (state.solved) return;
+
+    let index = state.selected;
+    if (index < 0 || state.given[index] || state.board[index] === state.solution[index]) {
+      index = state.board.findIndex(
+        (value, i) => !state.given[i] && value !== state.solution[i]
+      );
+    }
+    if (index < 0) return;
+
+    snapshot();
+    const value = state.solution[index];
+    state.board[index] = value;
+    state.notes[index].clear();
+    state.hint[index] = true;
+    state.selected = index;
+    for (const peer of peers(index)) state.notes[peer].delete(value);
+
+    render();
+    checkWin();
+  }
+
+  function checkWin() {
+    for (let i = 0; i < 81; i++) {
+      if (state.board[i] !== state.solution[i]) return;
+    }
+    state.solved = true;
+    stopTimer();
+    overlayTimeEl.textContent = formatTime(state.seconds);
+    overlayMistakesEl.textContent = String(state.mistakes);
+    overlayEl.classList.add('show');
+    overlayEl.setAttribute('aria-hidden', 'false');
+  }
+
+  function toggleNotes() {
+    if (state.solved) return;
+    state.notesMode = !state.notesMode;
+    notesBtn.classList.toggle('active', state.notesMode);
+    notesBtn.setAttribute('aria-pressed', String(state.notesMode));
+  }
+
+  // ---------- wiring ----------
+
+  for (let i = 0; i < 81; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.setAttribute('role', 'gridcell');
+    cell.tabIndex = -1;
+    cell.addEventListener('click', () => selectCell(i));
+    boardEl.appendChild(cell);
+    cells.push(cell);
+  }
+
+  for (let d = 1; d <= 9; d++) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'key';
+    button.innerHTML = `<span>${d}</span><span class="key-count"></span>`;
+    button.setAttribute('aria-label', `Enter ${d}`);
+    button.addEventListener('click', () => inputDigit(d));
+    numpadEl.appendChild(button);
+    keyEls[d] = button;
+    keyCountEls[d] = button.querySelector('.key-count');
+  }
+
+  diffEl.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-diff]');
+    if (button) newGame(button.dataset.diff);
+  });
+
+  notesBtn.addEventListener('click', toggleNotes);
+  undoBtn.addEventListener('click', undo);
+  eraseBtn.addEventListener('click', eraseSelected);
+  hintBtn.addEventListener('click', giveHint);
+  newBtn.addEventListener('click', () => newGame(state.difficulty));
+  overlayNewEl.addEventListener('click', () => newGame(state.difficulty));
+
+  document.addEventListener('keydown', (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    if (event.key >= '1' && event.key <= '9') {
+      inputDigit(Number(event.key));
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === 'Backspace' || event.key === 'Delete' || event.key === '0') {
+      eraseSelected();
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key.toLowerCase() === 'n') {
+      toggleNotes();
+      return;
+    }
+
+    const moves = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    };
+
+    if (moves[event.key]) {
+      const [dr, dc] = moves[event.key];
+      let index = state.selected;
+      if (index < 0) {
+        index = 0;
+      } else {
+        const row = Math.min(8, Math.max(0, Math.floor(index / 9) + dr));
+        const col = Math.min(8, Math.max(0, (index % 9) + dc));
+        index = row * 9 + col;
+      }
+      state.selected = index;
+      render();
+      cells[index].focus({ preventScroll: true });
+      event.preventDefault();
+    }
+  });
+
+  newGame('easy');
+})();
+</script>
+</body>
+</html>
